@@ -154,11 +154,15 @@ public unsafe partial class Player : NotifyPropertyChanged, IDisposable
     /// <summary>
     /// Player's Status
     /// </summary>
-    public Status       Status
+     Status       Status
     {
         get => status;
         private set
         {
+            if (value == Status.Stopped && status != Status.Stopped && status != Status.Opening)
+            {
+            SavePlaybackPosition();
+            }
             if (Set(ref _Status, value))
             {
                 // Loop Playback
@@ -511,6 +515,7 @@ public unsafe partial class Player : NotifyPropertyChanged, IDisposable
 
             try
             {
+                SavePlaybackPosition();
                 Initialize();
                 Audio.Dispose();
                 decoder.Dispose();
@@ -537,7 +542,23 @@ public unsafe partial class Player : NotifyPropertyChanged, IDisposable
                 Play();
         }
     }
-
+    private void Decoder_OpenVideoStreamCompleted(object sender, EventArgs e)
+{
+    // ... existing code ...
+    
+    // ADD THIS: Resume playback if position exists
+    if (Config.PlaybackHistory.AutoResume && 
+        Playlist.Selected != null && 
+        Config.PlaybackHistory.HasPlaybackPosition(Playlist.Selected.FilePath))
+    {
+        var position = Config.PlaybackHistory.GetPlaybackPosition(Playlist.Selected.FilePath);
+        if (position.HasValue && position.Value > 0 && position.Value < Duration)
+        {
+            // Use the existing Seek method (time in milliseconds)
+            Seek((int)(position.Value / 10000));
+        }
+    }
+}
     private void ResetMe()
     {
         canPlay     = false;
