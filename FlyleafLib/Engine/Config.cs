@@ -53,6 +53,7 @@ public class Config : NotifyPropertyChanged
             Demuxer     = Demuxer.Clone(),
             Decoder     = Decoder.Clone(),
             Player      = Player.Clone()
+            PlaybackHistory = PlaybackHistory.Clone(),
         };
 
         config.Player.config = config;
@@ -152,6 +153,7 @@ public class Config : NotifyPropertyChanged
     public AudioConfig      Audio       { get; set; } = new();
     public SubtitlesConfig  Subtitles   { get; set; } = new();
     public DataConfig       Data        { get; set; } = new();
+    public PlaybackHistoryConfig PlaybackHistory { get; set; } = new();
 
     public Dictionary<string, ObservableDictionary<string, string>>
                             Plugins     { get; set; } = [];
@@ -965,6 +967,109 @@ public class Config : NotifyPropertyChanged
         public bool             Enabled             { get => _Enabled; set { if (Set(ref _Enabled, value)) if (value) player?.Data.Enable(); else player?.Data.Disable(); } }
         bool _Enabled = false;
         internal void SetEnabled(bool enabled) => Set(ref _Enabled, enabled, true, nameof(Enabled));
+    }
+}
+        public class PlaybackHistoryConfig : NotifyPropertyChanged
+{
+    public PlaybackHistoryConfig Clone()
+    {
+        PlaybackHistoryConfig history = (PlaybackHistoryConfig)MemberwiseClone();
+        history.player = null;
+        history.config = null;
+        // Deep copy the dictionary
+        history.PlaybackPositions = new Dictionary<string, long>();
+        foreach (var item in PlaybackPositions)
+            history.PlaybackPositions.Add(item.Key, item.Value);
+        return history;
+    }
+
+    internal Player player;
+    internal Config config;
+
+    /// <summary>
+    /// Dictionary to store the last playback position for each file path
+    /// Key: File path (string)
+    /// Value: Last playback position in ticks (long)
+    /// </summary>
+    public Dictionary<string, long> PlaybackPositions { get; set; } = new Dictionary<string, long>();
+
+    /// <summary>
+    /// Maximum number of files to remember positions for (0 = unlimited)
+    /// </summary>
+    public int MaxHistoryEntries { get; set; } = 100;
+
+    /// <summary>
+    /// Whether to automatically resume playback when opening a file
+    /// </summary>
+    public bool AutoResume { get; set; } = true;
+
+    /// <summary>
+    /// Minimum duration of playback before saving position (in ticks, default 30 seconds)
+    /// </summary>
+    public long MinDurationToSave { get; set; } = 30 * (long)1000 * 10000;
+
+    /// <summary>
+    /// Saves the playback position for a given file path
+    /// </summary>
+    public void SavePlaybackPosition(string filePath, long positionTicks)
+    {
+        if (string.IsNullOrEmpty(filePath))
+            return;
+
+        // Don't save if position is too close to start or end (optional logic)
+        if (positionTicks < MinDurationToSave)
+            return;
+
+        // Add or update the position
+        if (PlaybackPositions.ContainsKey(filePath))
+            PlaybackPositions[filePath] = positionTicks;
+        else
+        {
+            // Check if we need to remove old entries
+            if (MaxHistoryEntries > 0 && PlaybackPositions.Count >= MaxHistoryEntries)
+            {
+                // Remove oldest entry (first one in dictionary)
+                var oldestKey = PlaybackPositions.Keys.First();
+                PlaybackPositions.Remove(oldestKey);
+            }
+            PlaybackPositions.Add(filePath, positionTicks);
+        }
+    }
+
+    /// <summary>
+    /// Retrieves the last playback position for a given file path
+    /// </summary>
+    public long? GetPlaybackPosition(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath) || !PlaybackPositions.ContainsKey(filePath))
+            return null;
+
+        return PlaybackPositions[filePath];
+    }
+
+    /// <summary>
+    /// Checks if a playback position exists for a file path
+    /// </summary>
+    public bool HasPlaybackPosition(string filePath)
+    {
+        return !string.IsNullOrEmpty(filePath) && PlaybackPositions.ContainsKey(filePath);
+    }
+
+    /// <summary>
+    /// Removes playback position for a given file path
+    /// </summary>
+    public void RemovePlaybackPosition(string filePath)
+    {
+        if (!string.IsNullOrEmpty(filePath) && PlaybackPositions.ContainsKey(filePath))
+            PlaybackPositions.Remove(filePath);
+    }
+
+    /// <summary>
+    /// Clears all stored playback positions
+    /// </summary>
+    public void ClearAllPlaybackPositions()
+    {
+        PlaybackPositions.Clear();
     }
 }
 
